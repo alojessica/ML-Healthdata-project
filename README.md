@@ -3,7 +3,7 @@ DS 6021: Introduction to Predictive Modeling Final Project
 Focus: Healthdata 
 
 
-#Teammates 
+# Teammates 
 Jessica Oseghale
-
+Randa Ampah
 
