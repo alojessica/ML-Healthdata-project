@@ -4,5 +4,5 @@ Focus: Healthdata
 
 
 # Teammates 
-Jessica Oseghale, Randa Ampah
+Jessica Oseghale, Randa Ampah, Aysha Hussen
 
