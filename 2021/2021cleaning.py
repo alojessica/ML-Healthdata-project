@@ -1,6 +1,7 @@
 #%%
 
 import pandas as pd 
+import numpy as np
 from ydata_profiling import ProfileReport
 
 
@@ -26,6 +27,120 @@ available_vars = [var for var in all_my_vars if var in df.columns]
 
 df_subset = df[available_vars]
 
+#%%
+
+replace_map = {
+    'BIRTHSEX': {  
+        1: 'Male',
+        2: 'Female',
+        7: np.nan,
+        9: np.nan
+    },
+    'MENTHLTH': {
+        88: 0,
+        77: np.nan,
+        99: np.nan
+    },
+    'POORHLTH': {
+        88: 0,
+        77: np.nan,
+        99: np.nan
+    },
+    'ADDEPEV3': { 
+        1: 'Yes',
+        2: 'No',
+        7: np.nan,
+        9: np.nan
+    },
+    'DECIDE': { 
+        1: 'Yes',
+        2: 'No',
+        7: np.nan,
+        9: np.nan
+    },
+    'DIFFALON': {
+        1: 'Yes',
+        2: 'No',
+        7: np.nan,
+        9: np.nan
+    },
+        
+    'ACEDEPRS': {
+        1: 'Yes',
+        2: 'No',
+        7: np.nan,
+        9: np.nan
+    },
+    'ACEDRINK': { 
+        1: 'Yes',
+        2: 'No',
+        7: np.nan,
+        9: np.nan
+    },
+    'ACEDRUGS': {
+        1: 'Yes',
+        2: 'No',
+        7: np.nan,
+        9: np.nan
+    },
+    'ACEPRISN': { 
+        1: 'Yes',
+        2: 'No',
+        7: np.nan,
+        9: np.nan
+    },
+    'ACEDIVRC': { 
+        1: 'Yes',
+        2: 'No',
+        8: 'Parents not married',
+        7: np.nan,
+        9: np.nan
+    },
+    'ACEPUNCH': {
+        1: 'Never',
+        2: 'Once',
+        3: 'More than once',
+        7: np.nan,
+        9: np.nan
+    },
+    'ACEHURT1': {
+        1: 'Never',
+        2: 'Once',
+        3: 'More than once',
+        7: np.nan,
+        9: np.nan
+    },
+    'ACESWEAR': { 
+        1: 'Never',
+        2: 'Once',
+        3: 'More than once',
+        7: np.nan,
+        9: np.nan
+    },
+    'ACETOUCH': { 
+        1: 'Never',
+        2: 'Once',
+        3: 'More than once',
+        7: np.nan,
+        9: np.nan
+    },
+    'ACETTHEM': {
+        1: 'Never',
+        2: 'Once',
+        3: 'More than once',
+        7: np.nan,
+        9: np.nan
+    },
+    'ACEHVSEX': {
+        1: 'Never',
+        2: 'Once',
+        3: 'More than once',
+        7: np.nan,
+        9: np.nan
+    }
+}
+
+df_subset = df_subset.replace(replace_map)
 
 #%%
 for var in available_vars:
