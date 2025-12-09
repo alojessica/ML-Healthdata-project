@@ -406,7 +406,7 @@ def update_subtab(subtabs):
                             min=0.1,
                             max=0.9,
                             step=0.05,
-                            value=0.5,
+                            value=0.7,
                             marks={
                                 0.1: "0.1",
                                 0.3: "0.3",
