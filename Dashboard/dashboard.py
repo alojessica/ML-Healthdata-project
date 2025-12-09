@@ -1,4 +1,5 @@
-# %%
+# Mental Health Dashboard
+
 # Importing necessary packages
 import pandas as pd
 import numpy as np
@@ -7,28 +8,503 @@ import plotly.express as px
 from dash import Dash, html, dcc, callback, Output, Input
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
-import os
 
-print("File exists?", os.path.exists("CDC-2019-2021-2023-DATA.csv"))
-# %%
+# Logistic Regression
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import (accuracy_score,
+                             log_loss,
+                             confusion_matrix,
+                             roc_curve,
+                             roc_auc_score)
+from sklearn.model_selection import train_test_split
+
+# KNN
+from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import balanced_accuracy_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.preprocessing import LabelEncoder
+import plotly.express as px
+from pandas.core.groupby.indexing import GroupByIndexingMixin
+
+# Hierarchical Clustering
+
+
+
 # Importing and cleaning the data
 
 df = pd.read_csv('CDC-2019-2021-2023-DATA.csv',low_memory=False)
-df = df.query("IYEAR != 2024")
+df = df.query("IYEAR != 2024").dropna().drop('Unnamed: 0', axis=1)
+df.ADDEPEV3 = df['ADDEPEV3'].replace({'Yes':1,'No':0}).astype(float)
+df.head()
+
+# X and y for the Logistc Regression and KNN
+logit_knn_X = df[["BIRTHSEX","MENTHLTH","POORHLTH","DECIDE","DIFFALON","IYEAR",
+                  "ACEDEPRS","ACEDRINK","ACEDRUGS","ACEPRISN","ACEDIVRC","ACEPUNCH",
+                  "ACEHURT1","ACESWEAR","ACETOUCH","ACETTHEM","ACEHVSEX"]]
+logit_knn_y = df["ADDEPEV3"] 
 
 
-# %%
-app = Dash()
+def do_logit(X, y, test_size, threshold):
+    """
+    Fit logistic regression with given test_size and threshold.
+    Returns metrics, confusion matrix, ROC info, and coefficient table.
+    """
+    # Target and predictors
 
-app.layout = [
-    html.H1(children='Predicting Mental Health with Behavioral Risk Factor Variables'),
-    html.Div(children='Final Dataset after dropping irrelevant columns'),
-    dag.AgGrid(
-        rowData=df.to_dict('records'),
-        columnDefs=[{"field": i} for i in df.columns[1:]]
+    nums = ["POORHLTH", "MENTHLTH"]
+    cats = ["IYEAR","BIRTHSEX","ACEDEPRS","DECIDE","DIFFALON","ACEDRINK",
+            "ACEDRUGS","ACEPRISN","ACEDIVRC","ACEPUNCH","ACEHURT1",
+            "ACESWEAR","ACETOUCH","ACETTHEM","ACEHVSEX"]
+
+    preprocess = ColumnTransformer(
+        transformers=[
+            ("encoder", OneHotEncoder(drop="first"), cats),
+            ("numeric", "passthrough", nums),
+        ]
     )
-]
+
+    pipe = Pipeline(
+        steps=[
+            ("preprocess", preprocess),
+            ("model", LogisticRegression(max_iter=1000)),
+        ]
+    )
+
+    # Train/test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=0, stratify=y
+    )
+
+    # fit pipeline
+    pipe.fit(X_train, y_train)
+
+    # predicted probabilities + labels on test set
+    p_test = pipe.predict_proba(X_test)[:, 1]
+    y_hat_test = (p_test >= threshold).astype(int)
+
+    # metrics
+    acc = accuracy_score(y_test, y_hat_test)
+    ll = log_loss(y_test, p_test)
+    cm = confusion_matrix(y_test, y_hat_test)
+
+    # ROC + AUC
+    fpr, tpr, _ = roc_curve(y_test, p_test)
+    auc = roc_auc_score(y_test, p_test)
+
+    # coefficient importance
+    logit = pipe.named_steps["model"]
+    preprocess_step = pipe.named_steps["preprocess"]
+
+    try:
+        feature_names = preprocess_step.get_feature_names_out()
+    except AttributeError:
+        # Fallback
+        feature_names = [f"feature_{i}" for i in range(logit.coef_.shape[1])]
+
+    coefs = logit.coef_.ravel()
+
+    coef_df = (
+        pd.DataFrame(
+            {
+                "feature": feature_names,
+                "coefficient": coefs,
+                "abs_coeff": np.abs(coefs),
+            }
+        )
+        .sort_values("abs_coeff", ascending=False)
+        .head(15)
+    )
+
+    return acc, ll, cm, fpr, tpr, auc, coef_df
+
+def do_logit(X, y, test_size, threshold):
+    """
+    Fit logistic regression with given test_size and threshold.
+    Returns metrics, confusion matrix, ROC info, and coefficient table.
+    """
+    # Target and predictors
+
+    nums = ["POORHLTH", "MENTHLTH"]
+    cats = ["IYEAR","BIRTHSEX","ACEDEPRS","DECIDE","DIFFALON","ACEDRINK",
+            "ACEDRUGS","ACEPRISN","ACEDIVRC","ACEPUNCH","ACEHURT1",
+            "ACESWEAR","ACETOUCH","ACETTHEM","ACEHVSEX"]
+
+    preprocess = ColumnTransformer(
+        transformers=[
+            ("encoder", OneHotEncoder(drop="first"), cats),
+            ("numeric", "passthrough", nums),
+        ]
+    )
+
+    pipe = Pipeline(
+        steps=[
+            ("preprocess", preprocess),
+            ("model", LogisticRegression(max_iter=1000)),
+        ]
+    )
+
+    # Train/test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=0, stratify=y
+    )
+
+    # fit pipeline
+    pipe.fit(X_train, y_train)
+
+    # predicted probabilities + labels on test set
+    p_test = pipe.predict_proba(X_test)[:, 1]
+    y_hat_test = (p_test >= threshold).astype(int)
+
+    # metrics
+    acc = accuracy_score(y_test, y_hat_test)
+    ll = log_loss(y_test, p_test)
+    cm = confusion_matrix(y_test, y_hat_test)
+
+    # ROC + AUC
+    fpr, tpr, _ = roc_curve(y_test, p_test)
+    auc = roc_auc_score(y_test, p_test)
+
+    # coefficient importance
+    logit = pipe.named_steps["model"]
+    preprocess_step = pipe.named_steps["preprocess"]
+
+    try:
+        feature_names = preprocess_step.get_feature_names_out()
+    except AttributeError:
+        # Fallback
+        feature_names = [f"feature_{i}" for i in range(logit.coef_.shape[1])]
+
+    coefs = logit.coef_.ravel()
+
+    coef_df = (
+        pd.DataFrame(
+            {
+                "feature": feature_names,
+                "coefficient": coefs,
+                "abs_coeff": np.abs(coefs),
+            }
+        )
+        .sort_values("abs_coeff", ascending=False)
+        .head(15)
+    )
+
+    return acc, ll, cm, fpr, tpr, auc, coef_df
+
+def do_knn(X, y):
+    nums = ['POORHLTH', 'MENTHLTH']
+    cats = ['IYEAR', 'BIRTHSEX', 'ACEDEPRS', 'DECIDE', 'DIFFALON', 'ACEDRINK', 'ACEDRUGS','ACEPRISN', 'ACEDIVRC', 'ACEPUNCH',
+            'ACEHURT1', 'ACESWEAR','ACETOUCH','ACETTHEM', 'ACEHVSEX']
+    
+    preprocess = ColumnTransformer(transformers=[('encoder',OneHotEncoder(drop='first'),cats),
+                                                 ('numeric','passthrough',nums)])
+    
+    X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.2, random_state=42,stratify=y)
+
+    pipe = Pipeline([("preprocess", preprocess),
+                     ("scaler",StandardScaler()),
+                     ("knn",KNeighborsClassifier(weights="distance"))
+                    ])
+    
+    param_grid = {"knn__n_neighbors": range(1, 41, 2)}
+    grid = GridSearchCV(pipe, param_grid, cv=5, scoring="balanced_accuracy", n_jobs=-1)
+    grid.fit(X_train, y_train)
+
+    results_df = pd.DataFrame(grid.cv_results_)
+
+    results_df["k"] = results_df["param_knn__n_neighbors"]
+    results_df["mean_score"] = results_df["mean_test_score"]
+
+    best_k = grid.best_params_["knn__n_neighbors"]
+    best_score = grid.best_score_
+
+    fig = px.line(
+        results_df,
+        x="k",
+        y="mean_score",
+        title=f"Cross-Validated Balanced Accuracy vs. K (best k = {best_k})",
+        markers=True,
+        labels={"k": "Number of Neighbors (k)", "mean_score": "Mean CV Balanced Accuracy"}
+    )
+
+
+    fig.add_scatter(
+        x=[best_k],
+        y=[best_score],
+        mode="markers+text",
+        text=[f"Best k = {best_k}"],
+        textposition="top center",
+        name="Best k"
+    )
+
+    fig.update_layout(hovermode="x unified", showlegend=False)
+    return fig
+
+external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+app = Dash(__name__,external_stylesheets=external_stylesheets, suppress_callback_exceptions=True)
+
+#app = Dash()
+
+app.layout = html.Div([
+    html.H1(children='Behavioral Risk Mental Health Dashboard'),
+    dcc.Tabs(id='tabs', value='tab1', 
+        children=[
+            dcc.Tab(label='README: Project Overview', 
+                    value='tab1'),
+            dcc.Tab(label='Data Table', 
+                    value='tab2'),
+            dcc.Tab(label='Models', 
+                    value='tab3',
+                    children = [dcc.Tabs(id='subtabs', 
+                                         value='knn_tab',
+                                         children = [dcc.Tab(label='K Nearest Neighbor',
+                                                             value='knn_tab'),
+
+                                                     dcc.Tab(label='Logistic Regression',
+                                                             value='logit_tab'),
+
+                                                     dcc.Tab(label = 'Linear Regression',
+                                                             value = 'linear_tab')]),
+                                
+                                html.Div(id='sub-tabs-content')]
+                    )
+                 ]
+            ),
+    html.Div(id='tabs-content')
+    ])
+
+
+@callback(Output('tabs-content', 'children'),
+          Input('tabs', 'value'))
+
+def render_content(tab):
+    if tab == 'tab1':
+        return html.Div([
+                html.H2('Behavioral Risk Mental Health Dashboard: Predicting Mental Health with Behavioral Risk Factor Variables'),
+                html.P('''This app uses behavioral risk variables from 2019, 2021, and 2023 to predict mental health outcomes,
+                          focusing primarily on variables relating to adverse childhood experiences, as well as a few other variables.'''),
+                
+                html.H3('About the Dataset'),
+                html.P('''This dataset comes from the CDC\'s Behavioral Risk Factor Surveillance System,
+                          a system of comprehensive telephone surveys conducted every year regarding health-related risk behaviors,
+                          chronic health conditions, and use of preventative health services for adults in the United States. Each row
+                          represents a single respondent with variables including birth sex, year survey was taken,  and 
+                       ''' ),
+
+                html.H3('Target Variables'),
+                html.U('Logistic Regression and K Nearest Neighbor'),
+                html.P([html.B('ADDEPEV3: '),'''Answer to survey question: (Ever told) (you had) a depressive disorder 
+                                                (including depression, major depression, dysthymia, or minor depression)?''']),
+                html.U('Linear Regression'),                                
+                html.P([html.B('MENTHLTH: '),'''Answer to survey question: Now thinking about your mental health, which includes stress, 
+                                                depression, and problems with emotions, for how many days during the past 30 days was your 
+                                                mental health not good?''']),                                
+                html.H3('Predictor Variables'),
+                html.Ul([
+                    html.Li([html.B('BIRTHSEX: '),'Assigned sex of respondent at birth']),
+                    html.Li([html.B('IYEAR: '), 'Year the respondent took the survey']),
+                    html.Li([html.B('POORHLTH: '),'''Answer to survey question: During the past 30 days, for about how many days did poor physical or mental health 
+                                                   keep you from doing your usual activities, such as self-care, work, or recreation?''']),
+                    html.Li([html.B('MENTHLTH: '), '''Answer to survey question:Now thinking about your mental health, 
+                                                     which includes stress, depression, and problems with emotions, 
+                                                     for how many days during the past 30 days was your mental health not good?''']),
+                    html.Li([html.B('DECIDE: '), '''Answer to survey question: Because of a physical, mental, or emotional condition, 
+                                                   do you have serious difficulty concentrating, remembering, or making decisions?''']),
+                    html.Li([html.B('DIFFALON: '), '''Answer to survey question: Because of a physical, mental, or emotional condition, 
+                                                     do you have difficulty doing errands alone such as visiting a doctor's office or shopping?''']),
+                    html.Li([html.B('ACEDEPRS: '), 'Answer to survey question: (As a child) Did you live with anyone who was depressed, mentally ill, or suicidal?']),
+                    html.Li([html.B('ACEDRINK: '), 'Answer to survey question: (As a child) Did you live with anyone who was a problem drinker or alcoholic?']),
+                    html.Li([html.B('ACEDRUGS: '), 'Answer to survey question: (As a child) Did you live with anyone who used illegal street drugs or who abused prescription medications?']),
+                    html.Li([html.B('ACEPRISN: '), 'Answer to survey question: (As a child) Did you live with anyone who served time or was sentenced to serve time in a prison, jail, or other correctional facility?']),
+                    html.Li([html.B('ACEDIVRC: '), 'Answer to survey question: (As a child) Were your parents separated or divorced?']),
+                    html.Li([html.B('ACEPUNCH: '), 'Answer to survey question: (As a child) How often did your parents or adults in your home ever slap, hit, kick, punch or beat each other up?']),
+                    html.Li([html.B('ACEHURT1: '), 'Answer to survey question: (As a child) Not including spanking, (before age 18), how often did a parent or adult in your home ever hit, beat, kick, or physically hurt you in any way?']),
+                    html.Li([html.B('ACESWEAR: '), 'Answer to survey question: (As a child) How often did a parent or adult in your home ever swear at you, insult you, or put you down']),
+                    html.Li([html.B('ACETOUCH: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, ever touch you sexually?']),
+                    html.Li([html.B('ACETTHEM: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, try to make you touch them sexually?']),
+                    html.Li([html.B('ACEHVSEX: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, force you to have sex?']),
+                        ]),
+
+                html.H3('Key Features of Dashboard'),
+                html.Ul([
+                    html.Li('View rows of the final cleaned dataset in the Data Table Tab'),
+                    html.Li('Select from Logistic Regression, K Nearest Neighbor, Hierarchical Agglomerative Clustering models, or Principal Component Analysis with Lasso Regularization models'),
+                    html.Li('Change hyperparameters, such as number of neighbors and train test split, to your liking to view different versions of the model')
+                        ]),
+
+                html.H3('Instructions for Use'),
+                html.P('hello'),
+
+                html.H3('Authors'),
+                html.P('''Randa Ampah, Isabel Delgado, Aysha Hussen, Aniyah McWilliams, 
+                          and Jessica Oseghale for the DS 6021 Final Project in the Fall 
+                          25 semester of the UVA MSDS program''')
+
+        ])
+    
+    if tab == 'tab2':
+        return html.Div([
+                dag.AgGrid(
+                    rowData=df.to_dict('records'),
+                    columnDefs=[{"field": i} for i in df.columns]
+                          )
+        ])
+    
+    if tab == 'tab3':
+        return 
+
+@callback(Output('sub-tabs-content', 'children'),
+          Input('subtabs', 'value'))
+
+def update_subtab(subtabs):
+    if subtabs == "knn_tab":
+        colors = {'background': '#7FDBFF','text': '#111111'}
+        fig = do_knn(logit_knn_X, logit_knn_y)
+        return html.Div(style={'backgroundColor': colors['background']}, 
+                        children=[html.H2(children='KNN Classifier Dashboard',
+                                          style={'textAlign': 'center',
+                                                 'color': colors['text']
+                                                }
+                        ),
+
+                                 html.Div(children='Model for KNN Classifier',
+                                          style={'textAlign': 'center',
+                                                 'color': colors['text']}
+                                         ),
+                                         
+                                 dcc.Graph(figure=fig)
+                                 ]
+                        )
+    if subtabs == "logit_tab":
+        return html.Div(
+            [   html.H2("Logistic Regression Model"),
+
+                html.Div(
+                    [
+                        html.Label("Test set size (%)"),
+                        dcc.Slider(
+                            id="test-size-slider",
+                            min=10,
+                            max=50,
+                            step=5,
+                            value=30,
+                            marks={i: f"{i}%" for i in range(10, 55, 5)},
+                        ),
+                    ],
+                    style={"margin-bottom": "30px"},
+                ),
+
+                html.Div(
+                    [
+                        html.Label("Classification threshold"),
+                        dcc.Slider(
+                            id="threshold-slider",
+                            min=0.1,
+                            max=0.9,
+                            step=0.05,
+                            value=0.5,
+                            marks={
+                                0.1: "0.1",
+                                0.3: "0.3",
+                                0.5: "0.5",
+                                0.7: "0.7",
+                                0.9: "0.9",
+                            },
+                        ),
+                    ],
+                    style={"margin-bottom": "30px"},
+                ),
+
+                html.H3("Model Performance"),
+                html.Div(id="logit-metrics"),
+
+                html.Br(),
+                html.H3("Confusion Matrix (Test Set)"),
+                dcc.Graph(id="logit-confusion"),
+
+                html.Br(),
+                html.H3("ROC Curve"),
+                dcc.Graph(id="logit-roc"),
+
+                html.Br(),
+                html.H3("Top Logistic Regression Coefficients"),
+                dcc.Graph(id="logit-coefs"),
+            ]
+        )
+    if subtabs == 'linear_tab':
+            return
+
+@callback(
+    Output("logit-metrics", "children"),
+    Output("logit-confusion", "figure"),
+    Output("logit-roc", "figure"),
+    Output("logit-coefs", "figure"),
+    Input("test-size-slider", "value"),
+    Input("threshold-slider", "value"),
+)
+
+def update_logit_tab(test_size_pct, threshold):
+    # convert slider % to proportion
+    test_size = test_size_pct / 100.0
+
+    acc, ll, cm, fpr, tpr, auc, coef_df = do_logit(logit_knn_X, logit_knn_y, test_size, threshold)
+
+    # ----- metrics text ----- #
+    metrics = html.Ul(
+        [
+            html.Li(f"Test size: {test_size_pct}%"),
+            html.Li(f"Threshold: {threshold:.2f}"),
+            html.Li(f"Accuracy: {acc:.3f}"),
+            html.Li(f"Log loss: {ll:.3f}"),
+            html.Li(f"AUC: {auc:.3f}"),
+        ]
+    )
+
+    # ----- confusion matrix heatmap ----- #
+    cm_fig = px.imshow(
+        cm,
+        text_auto=True,
+        x=["Predicted: No depression", "Predicted: Yes depression"],
+        y=["Actual: No depression", "Actual: Yes depression"],
+        labels=dict(x="Predicted label", y="Actual label", color="Count"),
+    )
+    cm_fig.update_layout(margin=dict(l=40, r=40, t=40, b=40))
+
+    # ----- ROC curve ----- #
+    roc_fig = px.area(
+        x=fpr,
+        y=tpr,
+        labels=dict(x="False positive rate", y="True positive rate"),
+        title=f"ROC Curve (AUC = {auc:.3f})",
+    )
+    roc_fig.add_shape(
+        type="line",
+        x0=0,
+        y0=0,
+        x1=1,
+        y1=1,
+        line=dict(dash="dash"),
+    )
+    roc_fig.update_layout(margin=dict(l=40, r=40, t=40, b=40))
+
+    # ----- coefficient importance bar chart ----- #
+    coef_df_sorted = coef_df.sort_values("abs_coeff", ascending=True)
+    coef_fig = px.bar(
+        coef_df_sorted,
+        x="coefficient",
+        y="feature",
+        orientation="h",
+        title="Top Logistic Regression Coefficients (by |beta|)",
+    )
+    coef_fig.update_layout(margin=dict(l=40, r=40, t=40, b=40))
+
+    return metrics, cm_fig, roc_fig, coef_fig
+
 
 if __name__ == '__main__':
-    app.run(debug=True)
-# %%
+    app.run(debug=True, port=8051)
+
