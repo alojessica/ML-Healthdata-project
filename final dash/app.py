@@ -244,38 +244,25 @@ def do_knn(X, y):
     fig.update_layout(hovermode="x unified", showlegend=False)
     return fig
 
-external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+external_stylesheets = [dbc.themes.BOOTSTRAP]
 app = Dash(__name__,external_stylesheets=external_stylesheets, suppress_callback_exceptions=True)
 
 #app = Dash()
 
 app.layout = html.Div([
     html.H1(children='Behavioral Risk Mental Health Dashboard'),
-    dcc.Tabs(id='tabs', value='tab1', 
-        children=[
-            dcc.Tab(label='README: Project Overview', 
-                    value='tab1'),
-            dcc.Tab(label='Data Table', 
-                    value='tab2'),
-            dcc.Tab(label='Models', 
-                    value='tab3',
-                    children = [dcc.Tabs(id='subtabs', 
-                                         value='knn_tab',
-                                         children = [dcc.Tab(label='K Nearest Neighbor',
-                                                             value='knn_tab'),
-
-                                                     dcc.Tab(label='Logistic Regression',
-                                                             value='logit_tab'),
-
-                                                     dcc.Tab(label = 'Linear Regression',
-                                                             value = 'linear_tab')]),
-                                
-                                html.Div(id='sub-tabs-content')]
-                    )
-                 ]
-            ),
-    html.Div(id='tabs-content')
-    ])
+                        dcc.Tabs(id='tabs', value='tab1', 
+                            children=[
+                                dcc.Tab(label='README: Project Overview', 
+                                        value='tab1'),
+                                dcc.Tab(label='Data Table', 
+                                        value='tab2'),
+                                dcc.Tab(label='Models', 
+                                        value='tab3')
+                                    ]
+                                ),
+                        html.Div(id='tabs-content')
+                        ])
 
 
 @callback(Output('tabs-content', 'children'),
@@ -355,88 +342,105 @@ def render_content(tab):
         ])
     
     if tab == 'tab3':
-        return 
+        return dbc.Container(fluid=True, children=[
 
-@callback(Output('sub-tabs-content', 'children'),
-          Input('subtabs', 'value'))
+            dbc.Row([
 
-def update_subtab(subtabs):
-    if subtabs == "knn_tab":
-        colors = {'background': '#7FDBFF','text': '#111111'}
+                # ---------- SIDEBAR ----------
+                dbc.Col(
+                    dbc.Nav(
+                        [
+                            dbc.NavLink("K Nearest Neighbor", href="/models/knn", active="exact"),
+                            dbc.NavLink("Logistic Regression", href="/models/logit", active="exact"),
+                            dbc.NavLink("Multiple Linear Regression", href="/models/linear", active="exact"),
+                            dbc.NavLink("Hierarchical Clustering", href='/models/hierarchichal', active='exact'),
+                            dbc.NavLink("Lasso Regularization", href='/models/lasso', active='exact')
+                        ],
+                        vertical=True,
+                        pills=True,
+                    ),
+                    width=2,
+                    style={"backgroundColor": "#f8f9fa", "padding": "20px", "height": "100vh"},
+                ),
+
+                # ---------- MAIN CONTENT ----------
+                dbc.Col(
+                    html.Div(id="sub-tabs-content"),
+                    width=10,
+                    style={"padding": "40px"}
+                ),
+
+            ]),
+
+            dcc.Location(id="url")
+        ])
+
+
+@callback(
+    Output("sub-tabs-content", "children"),
+    Input("url", "pathname"),
+)
+def update_sidebar_content(pathname):
+
+    if pathname == "/models/knn":
         fig = do_knn(logit_knn_X, logit_knn_y)
-        return html.Div(style={'backgroundColor': colors['background']}, 
-                        children=[html.H2(children='KNN Classifier Dashboard',
-                                          style={'textAlign': 'center',
-                                                 'color': colors['text']
-                                                }
-                        ),
 
-                                 html.Div(children='Model for KNN Classifier',
-                                          style={'textAlign': 'center',
-                                                 'color': colors['text']}
-                                         ),
-                                         
-                                 dcc.Graph(figure=fig)
-                                 ]
-                        )
-    if subtabs == "logit_tab":
-        return html.Div(
-            [   html.H2("Logistic Regression Model"),
+        return html.Div([
+            html.H2("KNN Classifier Dashboard"),
+            dcc.Graph(figure=fig),
+        ])
 
-                html.Div(
-                    [
-                        html.Label("Test set size (%)"),
-                        dcc.Slider(
-                            id="test-size-slider",
-                            min=10,
-                            max=50,
-                            step=5,
-                            value=30,
-                            marks={i: f"{i}%" for i in range(10, 55, 5)},
-                        ),
-                    ],
-                    style={"margin-bottom": "30px"},
-                ),
+    elif pathname == "/models/logit":
+        return html.Div([
+            html.H2("Logistic Regression Model"),
 
-                html.Div(
-                    [
-                        html.Label("Classification threshold"),
-                        dcc.Slider(
-                            id="threshold-slider",
-                            min=0.1,
-                            max=0.9,
-                            step=0.05,
-                            value=0.7,
-                            marks={
-                                0.1: "0.1",
-                                0.3: "0.3",
-                                0.5: "0.5",
-                                0.7: "0.7",
-                                0.9: "0.9",
-                            },
-                        ),
-                    ],
-                    style={"margin-bottom": "30px"},
-                ),
+            html.Label("Test set size (%)"),
+            dcc.Slider(
+                id="test-size-slider",
+                min=10,
+                max=50,
+                step=5,
+                value=30,
+                marks={i: f"{i}%" for i in range(10, 55, 5)},
+            ),
 
-                html.H3("Model Performance"),
-                html.Div(id="logit-metrics"),
+            html.Br(),
 
-                html.Br(),
-                html.H3("Confusion Matrix (Test Set)"),
-                dcc.Graph(id="logit-confusion"),
+            html.Label("Classification threshold"),
+            dcc.Slider(
+                id="threshold-slider",
+                min=0.1,
+                max=0.9,
+                step=0.05,
+                value=0.7,
+            ),
 
-                html.Br(),
-                html.H3("ROC Curve"),
-                dcc.Graph(id="logit-roc"),
+            html.Br(),
 
-                html.Br(),
-                html.H3("Top Logistic Regression Coefficients"),
-                dcc.Graph(id="logit-coefs"),
-            ]
-        )
-    if subtabs == 'linear_tab':
-            return
+            html.Div(id="logit-metrics"),
+            dcc.Graph(id="logit-confusion"),
+            dcc.Graph(id="logit-roc"),
+            dcc.Graph(id="logit-coefs"),
+        ])
+
+    elif pathname == "/models/linear":
+        return html.Div([
+            html.H2("Linear Regression"),
+            html.P("Coming soon...")
+        ])
+
+    elif pathname == "/models/hierarchichal":
+        return html.Div([
+            html.H2("Hierarchichal Agglomerative Clustering"),
+            html.P("Coming soon...")
+        ])
+    elif pathname == '/models/lasso':
+       return html.Div([
+            html.H2("Lasso Regularization"),
+            html.P("Coming soon...")
+        ])
+    
+    return html.Div("Select a model from the sidebar!")
 
 @callback(
     Output("logit-metrics", "children"),

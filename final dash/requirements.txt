@@ -3,4 +3,4 @@ dash
 pandas
 plotly
 scikit-learn
-dash_boostrap_components
+dash-bootstrap-components
