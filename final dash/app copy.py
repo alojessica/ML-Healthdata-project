@@ -137,7 +137,7 @@ ace_metrics, ace_predictions, ace_categories_map = compute_ace_models(
 )
 
 
-bar_color = "#404075"
+bar_color = "#a4a4e3"
 
 ace_labels_pretty = {
     "ACEDEPRS": "ACEDEPRS",
