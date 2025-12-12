@@ -809,7 +809,14 @@ def render_content(tab):
                     html.Li([html.B('ACESWEAR: '), 'Answer to survey question: (As a child) How often did a parent or adult in your home ever swear at you, insult you, or put you down']),
                     html.Li([html.B('ACETOUCH: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, ever touch you sexually?']),
                     html.Li([html.B('ACETTHEM: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, try to make you touch them sexually?']),
-                    html.Li([html.B('ACEHVSEX: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, force you to have sex?'])
+                    html.Li([html.B('ACEHVSEX: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, force you to have sex?']),
+                    html.Li([html.B('EMPLOY1: '), '''Answer to survey question: Are you currently... (Employed for wages, Self-employed, Out of work for 1 year or more, 
+                                                    Out of work for less than 1 year, A homemaker, A student, Retired, or Unable to work)?''']),
+                    html.Li([html.B('AVEDRNK3: '), 'Answer to survey question: During the past 30 days, on the days when you drank, about how many drinks did you drink on the average?']),
+                    html.Li([html.B('EXEROFT1: '), 'Answer to survey question: How many times per week or per month did you take part in this (physical) activity during the past month?']),
+                    html.Li([html.B('STRENGTH: '), 'Answer to survey question: During the past month, how many times per week or per month did you do physical activities or exercises to STRENGTHEN your muscles?']),
+                    html.Li([html.B('PHYSHLTH: '), '''Answer to survey question: Now thinking about your physical health, which includes physical illness and injury, 
+                                                for how many days during the past 30 days was your physical health not good?'''])
                         ]),
 
                 html.H3('Key Features of Dashboard'),
