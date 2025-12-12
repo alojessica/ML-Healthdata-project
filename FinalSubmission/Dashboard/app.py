@@ -469,6 +469,11 @@ def do_knn(X, y):
 #   HIERARCHICAL CLUSTERING: precompute clusters & figures
 # ============================================================
 
+# ============================================================
+#   HIERARCHICAL CLUSTERING: precompute clusters & figures
+# ============================================================
+
+# 1. Define Columns
 ace_YN = ["ACEDEPRS", "ACEDRINK", "ACEDRUGS", "ACEPRISN", "ACEDIVRC"]
 ace_NOM = ["ACEPUNCH", "ACEHURT1", "ACESWEAR", "ACETOUCH", "ACETTHEM", "ACEHVSEX"]
 cat_cols = ace_YN + ace_NOM
@@ -477,17 +482,18 @@ num_mh_cols = ["MENTHLTH", "POORHLTH"]
 
 df_hac = df.dropna(subset=cat_cols + cat_mh_cols + num_mh_cols).copy()
 
-# sample for gower to keep things manageable
+# 2. Sample Data (5000 rows for performance)
 df_sample = (
     df_hac.sample(n=5000, random_state=42)
     if len(df_hac) > 5000
     else df_hac.copy()
 )
 
+# 3. Calculate Distances & Linkage
 distance_matrix = gower_matrix(df_sample[cat_cols])
 Z = linkage(squareform(distance_matrix, checks=False), method="average")
 
-# silhouette for k=2..4
+# 4. Silhouette Score Graph
 sil_results = []
 for k in range(2, 5):
     model = AgglomerativeClustering(
@@ -508,7 +514,7 @@ hac_sil_fig = px.line(
     title="Silhouette Scores for Different K (Gower Distance)",
 )
 
-# final model at best_k (should be 2)
+# 5. Final Clustering (K=2)
 final_model = AgglomerativeClustering(
     n_clusters=best_k, metric="precomputed", linkage="average"
 )
@@ -517,31 +523,33 @@ final_labels = final_model.fit_predict(distance_matrix)
 df_sample = df_sample.reset_index(drop=True)
 df_sample["cluster"] = final_labels
 
-cluster_means = df_sample.groupby("cluster")["MENTHLTH"].mean()
-
-# --- DYNAMIC RENAMING LOGIC ---
-if cluster_means[0] > cluster_means[1]:
-    # Cluster 0 is worse (Higher mental health bad days)
-    c0_name = "High Risk / High ACE"
-    c1_name = "Low Risk / Low ACE" 
-    c0_color = "#6b8cce" # Blue
-    c1_color = "#ff69b4" # Pink
-    high_risk_id = 0
-    low_risk_id = 1
-else:
-    c0_name = "Low Risk / Low ACE"
-    c1_name = "High Risk / High ACE"
-    c0_color = "#ff69b4" # Pink
-    c1_color = "#6b8cce" # Blue  
-    high_risk_id = 1
-    low_risk_id = 0
-
-# map ADDEPEV3 back to Yes/No for plots
+# 6. DYNAMIC RISK DETECTION (The Fix)
+# Map ADDEPEV3 back to Yes/No for plots
 df_sample["ADDEPEV3"] = df_sample["ADDEPEV3"].replace(
     {0.0: "No", 1.0: "Yes", 0: "No", 1: "Yes"}
 )
 
-# ----- ACE HEATMAP -----
+# Calculate means to find the "High Risk" group
+cluster_means = df_sample.groupby("cluster")["MENTHLTH"].mean()
+
+if cluster_means[0] > cluster_means[1]:
+    # Cluster 0 is worse
+    c0_name = "High Risk / High ACE"
+    c1_name = "Low Risk / Low ACE"
+    c0_color = "#6b8cce"  # Blue
+    c1_color = "#ff69b4"  # Pink
+    high_risk_id = 0
+    low_risk_id = 1
+else:
+    # Cluster 1 is worse
+    c0_name = "Low Risk / Low ACE"
+    c1_name = "High Risk / High ACE"
+    c0_color = "#ff69b4"  # Pink
+    c1_color = "#6b8cce"  # Blue
+    high_risk_id = 1
+    low_risk_id = 0
+
+# 7. Generate Heatmap (Dynamic)
 heatmap_matrix = []
 heatmap_labels = []
 
@@ -556,219 +564,105 @@ for col in cat_cols:
             )
             heatmap_labels.append(f"{col}: {category}")
 
-heatmap_matrix = np.array(heatmap_matrix)
-
-custom_colors = [
-    [0.0, "#d1eeff"],
-    [0.33, "#6b8cce"],
-    [0.66, "#9b59b6"],
-    [1.0, "#ff69b4"],
-]
-
-row_height = 35
-dynamic_height = max(600, len(heatmap_labels) * row_height)
-
 hac_heatmap_fig = go.Figure(
     data=go.Heatmap(
         z=heatmap_matrix,
         y=heatmap_labels,
-        x=["High ACE / High risk", "Low ACE / Low risk"],
-        colorscale=custom_colors,
+        x=["High Risk / High ACE", "Low Risk / Low ACE"],
+        colorscale=[
+            [0.0, "#d1eeff"],
+            [0.33, "#6b8cce"],
+            [0.66, "#9b59b6"],
+            [1.0, "#ff69b4"],
+        ],
         text=np.round(heatmap_matrix, 1),
         texttemplate="%{text}%",
         textfont={"size": 11},
         colorbar=dict(title="Percentage (%)"),
-        xgap=2,
-        ygap=2,
+        xgap=2, ygap=2,
     )
 )
-
 hac_heatmap_fig.update_layout(
     title="All ACE Variables: Proportion Heatmap by Cluster",
-    xaxis_title="Cluster",
-    yaxis_title="Variable & Category",
-    height=dynamic_height,
+    height=max(600, len(heatmap_labels) * 35),
     yaxis=dict(dtick=1, automargin=True),
 )
 
-# ----- ACE DROPDOWN BAR CHART -----
-color_c0 = "#6b8cce"
-color_c1 = "#ff69b4"
-
+# 8. Generate Dropdown Bar Chart (Dynamic)
 hac_cat_fig = go.Figure()
 buttons = []
 
 for i, col in enumerate(cat_cols):
-    crosstab = (
-        pd.crosstab(df_sample["cluster"], df_sample[col], normalize="index") * 100
-    )
+    crosstab = pd.crosstab(df_sample["cluster"], df_sample[col], normalize="index") * 100
     categories = crosstab.columns.tolist()
+    is_visible = (i == 0)
 
-    is_visible = i == 0
-
-    hac_cat_fig.add_trace(
-        go.Bar(
-            x=categories,
-            y=crosstab.loc[0],
-            name=c0_name,
-            marker_color=color_c0,
-            visible=is_visible,
-        )
-    )
-    hac_cat_fig.add_trace(
-        go.Bar(
-            x=categories,
-            y=crosstab.loc[1],
-            name=c1_name,
-            marker_color=color_c1,
-            visible=is_visible,
-        )
-    )
+    hac_cat_fig.add_trace(go.Bar(
+        x=categories, y=crosstab.loc[0], name=c0_name, marker_color=c0_color, visible=is_visible
+    ))
+    hac_cat_fig.add_trace(go.Bar(
+        x=categories, y=crosstab.loc[1], name=c1_name, marker_color=c1_color, visible=is_visible
+    ))
 
     visible_settings = [False] * (len(cat_cols) * 2)
     visible_settings[2 * i] = True
     visible_settings[2 * i + 1] = True
 
-    buttons.append(
-        dict(
-            label=col,
-            method="update",
-            args=[
-                {"visible": visible_settings},
-                {"title": f"ACE Category by Cluster: {col}"},
-            ],
-        )
-    )
+    buttons.append(dict(
+        label=col, method="update",
+        args=[{"visible": visible_settings}, {"title": f"ACE Category by Cluster: {col}"}]
+    ))
 
 hac_cat_fig.update_layout(
     title=f"ACE Category by Cluster: {cat_cols[0]}",
     yaxis_title="Percentage (%)",
-    xaxis_title="Category",
     barmode="group",
-    height=600,
-    margin=dict(r=200),
-    legend=dict(x=1.05, y=1.0, xanchor="left", yanchor="top"),
-    updatemenus=[
-        dict(
-            buttons=buttons,
-            direction="down",
-            pad={"r": 10, "t": 10},
-            showactive=True,
-            x=1.05,
-            xanchor="left",
-            y=0.85,
-            yanchor="top",
-        )
-    ],
+    updatemenus=[dict(buttons=buttons, direction="down", x=1.05, y=0.85, showactive=True)]
 )
 
-# ----- MENTAL HEALTH BAR SUBPLOTS -----
-mh_titles = [
-    "Depressive Disorder Diagnosis",
-    "Difficulty Concentrating / Deciding",
-    "Difficulty Doing Errands Alone",
-]
+# 9. Generate Mental Health Bar Subplots (Dynamic)
 fig_mh_bar = make_subplots(
-    rows=3, cols=1, subplot_titles=mh_titles, vertical_spacing=0.1
+    rows=3, cols=1,
+    subplot_titles=["Depressive Disorder", "Diff. Concentrating", "Diff. Errands"]
 )
-
-c0_color = "#6b8cce"
-c1_color = "#ff69b4"
 
 for i, col in enumerate(cat_mh_cols):
-    ct = (
-        pd.crosstab(df_sample["cluster"], df_sample[col], normalize="index") * 100
-    )
+    ct = pd.crosstab(df_sample["cluster"], df_sample[col], normalize="index") * 100
     labels = ct.columns.astype(str)
+    
+    fig_mh_bar.add_trace(go.Bar(
+        x=labels, y=ct.loc[0], name=c0_name, marker_color=c0_color, showlegend=(i==0)
+    ), row=i+1, col=1)
+    
+    fig_mh_bar.add_trace(go.Bar(
+        x=labels, y=ct.loc[1], name=c1_name, marker_color=c1_color, showlegend=(i==0)
+    ), row=i+1, col=1)
 
-    fig_mh_bar.add_trace(
-        go.Bar(
-            x=labels,
-            y=ct.loc[0],
-            name=c0_name,
-            marker_color=c0_color,
-            showlegend=(i == 0),
-        ),
-        row=i + 1,
-        col=1,
-    )
+fig_mh_bar.update_layout(title="Mental Health Outcomes by Cluster", barmode="group", height=800)
 
-    fig_mh_bar.add_trace(
-        go.Bar(
-            x=labels,
-            y=ct.loc[1],
-            name=c1_name,
-            marker_color=c1_color,
-            showlegend=(i == 0),
-        ),
-        row=i + 1,
-        col=1,
-    )
-
-fig_mh_bar.update_layout(
-    title="Mental Health & Functional Difficulties by Cluster",
-    barmode="group",
-    height=800,
-    width=900,
-    bargap=0.4,
-    bargroupgap=0.1,
-)
-for r in [1, 2, 3]:
-    fig_mh_bar.update_yaxes(title_text="Percentage (%)", row=r, col=1)
-
-# ----- SPLIT VIOLIN FOR UNHEALTHY DAYS -----
+# 10. Generate Violin Plots (Dynamic)
 fig_violin = go.Figure()
 metrics = ["MENTHLTH", "POORHLTH"]
-x_labels = ["Mental health not good (days)", "Poor health limits activities (days)"]
+x_labels = ["Mental health (days)", "Physical health (days)"]
 
 for i, col in enumerate(metrics):
-    show_legend = i == 0
-
-    fig_violin.add_trace(
-        go.Violin(
-            y=df_sample[df_sample["cluster"] == 0][col],
-            x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == 0]),
-            legendgroup=c0_name,
-            scalegroup="Cluster0",
-            name=c0_name,
-            side="negative",
-            line_color=c0_color,
-            fillcolor=c0_color,
-            opacity=0.6,
-            meanline_visible=True,
-            showlegend=show_legend,
-            spanmode="hard",
-        )
-    )
-
-    fig_violin.add_trace(
-        go.Violin(
-            y=df_sample[df_sample["cluster"] == 1][col],
-            x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == 1]),
-            legendgroup=c1_name,
-            scalegroup="Cluster1",
-            name=c1_name,
-            side="positive",
-            line_color=c1_color,
-            fillcolor=c1_color,
-            opacity=0.6,
-            meanline_visible=True,
-            showlegend=show_legend,
-            spanmode="hard",
-        )
-    )
+    fig_violin.add_trace(go.Violin(
+        y=df_sample[df_sample["cluster"] == 0][col],
+        x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == 0]),
+        legendgroup=c0_name, scalegroup="Cluster0", name=c0_name,
+        side="negative", line_color=c0_color, opacity=0.6, meanline_visible=True,
+        showlegend=(i==0), spanmode="hard"
+    ))
+    fig_violin.add_trace(go.Violin(
+        y=df_sample[df_sample["cluster"] == 1][col],
+        x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == 1]),
+        legendgroup=c1_name, scalegroup="Cluster1", name=c1_name,
+        side="positive", line_color=c1_color, opacity=0.6, meanline_visible=True,
+        showlegend=(i==0), spanmode="hard"
+    ))
 
 fig_violin.update_traces(width=0.5, points=False)
-fig_violin.update_layout(
-    title="Distribution of Unhealthy Days by Cluster (Split Violin)",
-    xaxis_title="Health Metric",
-    yaxis=dict(title="Days (0–30)", range=[0, 30]),
-    violingap=0,
-    violingroupgap=0,
-    violinmode="overlay",
-    height=600,
-    legend=dict(title="Cluster group"),
-)
+fig_violin.update_layout(title="Distribution of Unhealthy Days", violinmode="overlay", height=600)
 
 # ============================================================
 #   DASH APP LAYOUT
@@ -1051,20 +945,29 @@ def update_sidebar_content(pathname):
         )
 
     elif pathname == "/models/hierarchichal":
-        return html.Div(
-            [
-                html.H2("Hierarchical Agglomerative Clustering (Gower distance)"),
-                html.P(
-                    "We cluster respondents based on their adverse childhood experiences (ACEs) "
-                    "using Gower distance, then examine how mental-health outcomes differ across clusters."
-                ),
-                dcc.Graph(figure=hac_sil_fig),
-                dcc.Graph(figure=hac_heatmap_fig),
-                dcc.Graph(figure=hac_cat_fig),
-                dcc.Graph(figure=fig_mh_bar),
-                dcc.Graph(figure=fig_violin),
-            ]
-        )
+        return html.Div([
+            html.H2("Hierarchical Agglomerative Clustering"),
+            html.P("Clusters based on Adverse Childhood Experiences (ACEs) using Gower Distance."),
+            
+            # 1. Silhouette Score
+            dcc.Graph(figure=hac_sil_fig),
+            html.Hr(),
+            
+            # 2. Heatmap
+            dcc.Graph(figure=hac_heatmap_fig),
+            html.Hr(),
+            
+            # 3. Dropdown Bar Chart
+            dcc.Graph(figure=hac_cat_fig),
+            html.Hr(),
+            
+            # 4. Mental Health Bar Charts
+            dcc.Graph(figure=fig_mh_bar),
+            html.Hr(),
+            
+            # 5. Violin Plots
+            dcc.Graph(figure=fig_violin)
+        ])
     return html.Div("Select a model from the sidebar.")
 
 
