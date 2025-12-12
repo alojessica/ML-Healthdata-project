@@ -6,8 +6,10 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import matplotlib as plt
+import seaborn as sns
 
-from dash import Dash, html, dcc, callback, Output, Input
+from dash import Dash, html, dcc, callback, Output, Input, dash
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 
@@ -381,7 +383,72 @@ def do_knn(X, y):
     )
 
     fig.update_layout(hovermode="x unified", showlegend=False)
-    return fig
+
+    pipe2 = Pipeline([
+            ("preprocess", preprocess),
+            ("scaler", StandardScaler()),
+            ("knn", KNeighborsClassifier(n_neighbors=best_k,
+            weights="distance"))
+        ])
+    
+    pipe2.fit(X_train, y_train)
+    y_pred = pipe2.predict(X_test)
+    prob_test = pipe2.predict_proba(X_test)[:,1]
+
+    knn_acc = accuracy_score(y_test, y_pred)
+    knn_bal_acc = balanced_accuracy_score(y_test, y_pred)
+
+    knn_fpr, knn_tpr, _ = roc_curve(y_test, prob_test)
+    knn_auc = roc_auc_score(y_test,prob_test)
+    knn_roc_fig = px.area(
+        x=knn_fpr,
+        y=knn_tpr,
+        labels=dict(x="False positive rate", y="True positive rate"),
+        title=f"ROC Curve (AUC = {knn_auc:.3f})",
+    )
+    knn_roc_fig.add_shape(
+        type="line",
+        x0=0,
+        y0=0,
+        x1=1,
+        y1=1,
+        line=dict(dash="dash"),
+    )
+    knn_roc_fig.update_layout(margin=dict(l=40, r=40, t=40, b=40))
+
+    knn_scatter = px.scatter(
+                    X_test.iloc[:10,:], x='POORHLTH', y='MENTHLTH',
+                    color=prob_test[:10], color_continuous_scale='Magenta',
+                    symbol=y_test[:10], symbol_map={'0': 'square-dot', '1': 'circle-dot'},
+                    labels={'symbol': 'label', 'color': 'probability of <br>first class <br>(Being Depressed)'},
+                    title="KNN Depression Classification Displayed Across Days Depressed and Days Unmotivated"
+                )
+
+    knn_scatter.update_traces(marker_size=12, marker_line_width=1.5)
+    knn_scatter.update_layout(legend_orientation='h')
+
+    cm = confusion_matrix(y_test, y_pred)
+
+
+    knn_cm = px.imshow(
+        cm,
+        text_auto=True,
+        color_continuous_scale='RdPu',
+        x=["Predicted: No depression", "Predicted: Yes depression"],
+        y=["Actual: No depression", "Actual: Yes depression"],
+        labels=dict(x="Predicted label", y="Actual label", color="Count", title="Confusion Matrix of Depressive Disorder Predictions"),
+    )
+    knn_cm.update_layout(margin=dict(l=40, r=40, t=40, b=40))
+
+    knn_met = html.Ul(
+        [
+            html.Li(f"Accuracy: {knn_acc:.3f}"),
+            html.Li(f"Balanced Accuracy: {knn_bal_acc:.3f}"),
+            html.Li(f"AUC: {knn_auc:.3f}"),
+        ]
+    )
+
+    return fig, knn_roc_fig, knn_met, knn_scatter, knn_cm
 
 
 # ============================================================
@@ -698,64 +765,75 @@ app.layout = html.Div(
 
 @callback(Output("tabs-content", "children"), Input("tabs", "value"))
 def render_content(tab):
-    if tab == "tab1":
-        return html.Div(
-            [
-                html.H2(
-                    "Behavioral Risk Mental Health Dashboard: Predicting Mental Health with Behavioral Risk Factor Variables"
-                ),
-                html.P(
-                    "This app uses behavioral risk variables from 2019, 2021, and 2023 "
-                    "to predict mental health outcomes, focusing primarily on variables "
-                    "relating to adverse childhood experiences (ACEs), as well as a few "
-                    "other behavioral and functional variables."
-                ),
-                html.H3("About the Dataset"),
-                html.P(
-                    "This dataset comes from the CDC's Behavioral Risk Factor Surveillance "
-                    "System (BRFSS), a system of comprehensive telephone surveys conducted "
-                    "every year regarding health-related risk behaviors, chronic health "
-                    "conditions, and use of preventative health services for adults in the "
-                    "United States."
-                ),
-                html.H3("Target Variables"),
-                html.U("Logistic Regression and K Nearest Neighbor"),
-                html.P(
-                    [
-                        html.B("ADDEPEV3: "),
-                        "(Ever told) (you had) a depressive disorder (including depression, "
-                        "major depression, dysthymia, or minor depression)?",
-                    ]
-                ),
-                html.U("Multiple Linear Regression"),
-                html.P(
-                    [
-                        html.B("MENTHLTH: "),
-                        "During the past 30 days, for how many days was your mental health not good?",
-                    ]
-                ),
-                html.H3("Key Features of Dashboard"),
-                html.Ul(
-                    [
-                        html.Li(
-                            "View rows of the final cleaned dataset in the Data Table tab."
-                        ),
-                        html.Li(
-                            "Select from Logistic Regression, K Nearest Neighbor, Hierarchical Agglomerative Clustering, "
-                            "and spline-based Multiple Linear Regression with ACE variables."
-                        ),
-                        html.Li(
-                            "Change hyperparameters, such as K or train–test split, to explore different model behaviors."
-                        ),
-                    ]
-                ),
-                html.H3("Authors"),
-                html.P(
-                    "Randa Ampah, Isabel Delgado, Aysha Hussen, Aniyah McWilliams, "
-                    "and Jessica Oseghale for the DS 6021 Final Project (Fall '25, UVA MSDS)."
-                ),
-            ]
-        )
+    if tab == 'tab1':
+        return html.Div([
+                html.H2('Behavioral Risk Mental Health Dashboard: Predicting Mental Health with Behavioral Risk Factor Variables'),
+                html.P('''This app uses behavioral risk variables from 2019, 2021, and 2023 to predict mental health outcomes,
+                          focusing primarily on variables relating to adverse childhood experiences, as well as a few other variables.'''),
+                
+                html.H3('About the Dataset'),
+                html.P('''This dataset comes from the CDC\'s Behavioral Risk Factor Surveillance System,
+                          a system of comprehensive telephone surveys conducted every year regarding health-related risk behaviors,
+                          chronic health conditions, and use of preventative health services for adults in the United States. Each row
+                          represents a single respondent with variables including birth sex, year survey was taken,  and 
+                       ''' ),
+
+                html.H3('Target Variables'),
+                html.U('Logistic Regression and K Nearest Neighbor'),
+                html.P([html.B('ADDEPEV3: '),'''Answer to survey question: (Ever told) (you had) a depressive disorder 
+                                                (including depression, major depression, dysthymia, or minor depression)?''']),
+                html.U('Linear Regression'),                                
+                html.P([html.B('MENTHLTH: '),'''Answer to survey question: Now thinking about your mental health, which includes stress, 
+                                                depression, and problems with emotions, for how many days during the past 30 days was your 
+                                                mental health not good?''']),                                
+                html.H3('Predictor Variables'),
+                html.Ul([
+                    html.Li([html.B('BIRTHSEX: '),'Assigned sex of respondent at birth']),
+                    html.Li([html.B('IYEAR: '), 'Year the respondent took the survey']),
+                    html.Li([html.B('POORHLTH: '),'''Answer to survey question: During the past 30 days, for about how many days did poor physical or mental health 
+                                                   keep you from doing your usual activities, such as self-care, work, or recreation?''']),
+                    html.Li([html.B('MENTHLTH: '), '''Answer to survey question:Now thinking about your mental health, 
+                                                     which includes stress, depression, and problems with emotions, 
+                                                     for how many days during the past 30 days was your mental health not good?''']),
+                    html.Li([html.B('DECIDE: '), '''Answer to survey question: Because of a physical, mental, or emotional condition, 
+                                                   do you have serious difficulty concentrating, remembering, or making decisions?''']),
+                    html.Li([html.B('DIFFALON: '), '''Answer to survey question: Because of a physical, mental, or emotional condition, 
+                                                     do you have difficulty doing errands alone such as visiting a doctor's office or shopping?''']),
+                    html.Li([html.B('ACEDEPRS: '), 'Answer to survey question: (As a child) Did you live with anyone who was depressed, mentally ill, or suicidal?']),
+                    html.Li([html.B('ACEDRINK: '), 'Answer to survey question: (As a child) Did you live with anyone who was a problem drinker or alcoholic?']),
+                    html.Li([html.B('ACEDRUGS: '), 'Answer to survey question: (As a child) Did you live with anyone who used illegal street drugs or who abused prescription medications?']),
+                    html.Li([html.B('ACEPRISN: '), 'Answer to survey question: (As a child) Did you live with anyone who served time or was sentenced to serve time in a prison, jail, or other correctional facility?']),
+                    html.Li([html.B('ACEDIVRC: '), 'Answer to survey question: (As a child) Were your parents separated or divorced?']),
+                    html.Li([html.B('ACEPUNCH: '), 'Answer to survey question: (As a child) How often did your parents or adults in your home ever slap, hit, kick, punch or beat each other up?']),
+                    html.Li([html.B('ACEHURT1: '), 'Answer to survey question: (As a child) Not including spanking, (before age 18), how often did a parent or adult in your home ever hit, beat, kick, or physically hurt you in any way?']),
+                    html.Li([html.B('ACESWEAR: '), 'Answer to survey question: (As a child) How often did a parent or adult in your home ever swear at you, insult you, or put you down']),
+                    html.Li([html.B('ACETOUCH: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, ever touch you sexually?']),
+                    html.Li([html.B('ACETTHEM: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, try to make you touch them sexually?']),
+                    html.Li([html.B('ACEHVSEX: '), 'Answer to survey question: (As a child) How often did anyone at least 5 years older than you or an adult, force you to have sex?'])
+                        ]),
+
+                html.H3('Key Features of Dashboard'),
+                html.Ul([
+                    html.Li('View rows of the final cleaned dataset in the Data Table Tab'),
+                    html.Li('See results and interact with variables of the different models in the Models tab')
+                        ]),
+
+                html.H3('Instructions for Use'),
+                html.Ul([
+                    html.Li('Select from K Nearest Neighbor, Logistic Regression, Logistic Regression, Hierarchical Agglomerative Clustering models on the sidebar within the Models tab'),
+                    html.Li('Change hyperparameters, such as number of neighbors and train test split, to your liking to view different versions of the Logistic Regression model'),
+                    html.Li('Most visualizations are interactive, so hovering over different parts will show more detailed information.'),
+                    html.Li('Dropdown menus in visualizations will allow you to visualize different variables'),
+                    html.Li('Click on variables in the legend of the violin plots and bar graphs of the Hierarchical Clustering tab to isolate variables to visualize'),
+                    html.Li('Note: the KNN tab takes a bit of time to render, so please be patient!')
+                        ]),
+
+                html.H3('Authors'),
+                html.P('''Randa Ampah, Isabel Delgado, Aysha Hussen, Aniyah McWilliams, 
+                          and Jessica Oseghale for the DS 6021 Final Project in the Fall 
+                          25 semester of the UVA MSDS program''')
+
+        ])
 
     if tab == "tab2":
         return html.Div(
@@ -787,7 +865,7 @@ def render_content(tab):
                                         active="exact",
                                     ),
                                     dbc.NavLink(
-                                        "Multiple Linear Regression",
+                                        "Multiple Linear Regression w/ Lasso",
                                         href="/models/linear",
                                         active="exact",
                                     ),
@@ -795,12 +873,7 @@ def render_content(tab):
                                         "Hierarchical Clustering",
                                         href="/models/hierarchichal",
                                         active="exact",
-                                    ),
-                                    dbc.NavLink(
-                                        "Lasso Regularization",
-                                        href="/models/lasso",
-                                        active="exact",
-                                    ),
+                                    )
                                 ],
                                 vertical=True,
                                 pills=True,
@@ -827,11 +900,23 @@ def render_content(tab):
 @callback(Output("sub-tabs-content", "children"), Input("url", "pathname"))
 def update_sidebar_content(pathname):
     if pathname == "/models/knn":
-        fig = do_knn(logit_knn_X, logit_knn_y)
+        fig, knn_roc_fig, knn_met, knn_scatter, knn_cm = do_knn(logit_knn_X, logit_knn_y)
         return html.Div(
             [
                 html.H2("K-Nearest Neighbor Classifier"),
+                html.P(''),
+                html.H3('Best K from Cross Validation'),
+                html.P(''),
                 dcc.Graph(figure=fig),
+                html.H3('Relevant Graphs'),
+                dcc.Graph(figure=knn_scatter),
+                html.P(''),
+                html.H3('Model Results'),
+                html.H4('Confusion Matrix of Predictions'),
+                dcc.Graph(figure=knn_cm),
+                html.P(''),
+                html.Div([knn_met]),
+                dcc.Graph(figure=knn_roc_fig)
             ]
         )
 
@@ -859,6 +944,7 @@ def update_sidebar_content(pathname):
                 ),
                 html.Br(),
                 html.Div(id="logit-metrics"),
+                html.H4('Confusion Matrix of Predictions'),
                 dcc.Graph(id="logit-confusion"),
                 dcc.Graph(id="logit-roc"),
                 dcc.Graph(id="logit-coefs"),
@@ -869,6 +955,11 @@ def update_sidebar_content(pathname):
         return html.Div(
             [
                 html.H2("Multiple Linear Regression (Spline with ACE Variables)"),
+                html.P(''),
+                html.H3("Lasso Regularization"),
+                html.P('Lasso regularization was used to identify the most influential predictors to use within the linear regression model.'),
+                html.Img(src='/assets/lasso_results.png', alt='Lasso Results'),
+                html.H3('MLR Results'),
                 dcc.Graph(figure=fig_ace),
                 html.Br(),
                 html.H3("Model Performance Metrics"),
@@ -928,15 +1019,6 @@ def update_sidebar_content(pathname):
                 dcc.Graph(figure=fig_violin),
             ]
         )
-
-    elif pathname == "/models/lasso":
-        return html.Div(
-            [
-                html.H2("Lasso Regularization"),
-                html.P("Coming soon..."),
-            ]
-        )
-
     return html.Div("Select a model from the sidebar.")
 
 
@@ -971,6 +1053,7 @@ def update_logit_tab(test_size_pct, threshold):
     cm_fig = px.imshow(
         cm,
         text_auto=True,
+        color_continuous_scale='RdPu',
         x=["Predicted: No depression", "Predicted: Yes depression"],
         y=["Actual: No depression", "Actual: Yes depression"],
         labels=dict(x="Predicted label", y="Actual label", color="Count"),
@@ -1039,6 +1122,8 @@ def update_logit_tab(test_size_pct, threshold):
         },
     )
     coef_fig.update_layout(
+        yaxis = {'title':'Variable'},
+        xaxis = {'title':'Coefficient'},
         title=dict(
             x=0.5,            # centered
             xanchor="center",
