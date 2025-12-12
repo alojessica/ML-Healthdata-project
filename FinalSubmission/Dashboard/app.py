@@ -517,6 +517,25 @@ final_labels = final_model.fit_predict(distance_matrix)
 df_sample = df_sample.reset_index(drop=True)
 df_sample["cluster"] = final_labels
 
+cluster_means = df_sample.groupby("cluster")["MENTHLTH"].mean()
+
+# --- DYNAMIC RENAMING LOGIC ---
+if cluster_means[0] > cluster_means[1]:
+    # Cluster 0 is worse (Higher mental health bad days)
+    c0_name = "High Risk / High ACE"
+    c1_name = "Low Risk / Low ACE" 
+    c0_color = "#6b8cce" # Blue
+    c1_color = "#ff69b4" # Pink
+    high_risk_id = 0
+    low_risk_id = 1
+else:
+    c0_name = "Low Risk / Low ACE"
+    c1_name = "High Risk / High ACE"
+    c0_color = "#ff69b4" # Pink
+    c1_color = "#6b8cce" # Blue  
+    high_risk_id = 1
+    low_risk_id = 0
+
 # map ADDEPEV3 back to Yes/No for plots
 df_sample["ADDEPEV3"] = df_sample["ADDEPEV3"].replace(
     {0.0: "No", 1.0: "Yes", 0: "No", 1: "Yes"}
@@ -533,7 +552,7 @@ for col in cat_cols:
         )
         for category in crosstab.columns:
             heatmap_matrix.append(
-                [crosstab.loc[0, category], crosstab.loc[1, category]]
+                [crosstab.loc[high_risk_id, category], crosstab.loc[low_risk_id, category]]
             )
             heatmap_labels.append(f"{col}: {category}")
 
@@ -591,7 +610,7 @@ for i, col in enumerate(cat_cols):
         go.Bar(
             x=categories,
             y=crosstab.loc[0],
-            name="High ACE / High risk",
+            name=c0_name,
             marker_color=color_c0,
             visible=is_visible,
         )
@@ -600,7 +619,7 @@ for i, col in enumerate(cat_cols):
         go.Bar(
             x=categories,
             y=crosstab.loc[1],
-            name="Low ACE / Low risk",
+            name=c1_name,
             marker_color=color_c1,
             visible=is_visible,
         )
@@ -666,7 +685,7 @@ for i, col in enumerate(cat_mh_cols):
         go.Bar(
             x=labels,
             y=ct.loc[0],
-            name="High ACE / High risk",
+            name=c0_name,
             marker_color=c0_color,
             showlegend=(i == 0),
         ),
@@ -678,7 +697,7 @@ for i, col in enumerate(cat_mh_cols):
         go.Bar(
             x=labels,
             y=ct.loc[1],
-            name="Low ACE / Low risk",
+            name=c1_name,
             marker_color=c1_color,
             showlegend=(i == 0),
         ),
@@ -709,9 +728,9 @@ for i, col in enumerate(metrics):
         go.Violin(
             y=df_sample[df_sample["cluster"] == 0][col],
             x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == 0]),
-            legendgroup="High ACE / High risk",
+            legendgroup=c0_name,
             scalegroup="Cluster0",
-            name="High ACE / High risk",
+            name=c0_name,
             side="negative",
             line_color=c0_color,
             fillcolor=c0_color,
@@ -726,9 +745,9 @@ for i, col in enumerate(metrics):
         go.Violin(
             y=df_sample[df_sample["cluster"] == 1][col],
             x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == 1]),
-            legendgroup="Low ACE / Low risk",
+            legendgroup=c1_name,
             scalegroup="Cluster1",
-            name="Low ACE / Low risk",
+            name=c1_name,
             side="positive",
             line_color=c1_color,
             fillcolor=c1_color,
