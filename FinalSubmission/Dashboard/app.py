@@ -481,8 +481,8 @@ df_hac = df.dropna(subset=cat_cols + cat_mh_cols + num_mh_cols).copy()
 
 # sample for gower to keep things manageable
 df_sample = (
-    df_hac.sample(n=10000, random_state=42)
-    if len(df_hac) > 10000
+    df_hac.sample(n=5000, random_state=42)
+    if len(df_hac) > 5000
     else df_hac.copy()
 )
 
