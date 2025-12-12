@@ -476,10 +476,11 @@ num_mh_cols = ["MENTHLTH", "POORHLTH"]
 
 df_hac = df.dropna(subset=cat_cols + cat_mh_cols + num_mh_cols).copy()
 
-# sample for gower to keep things manageable
+# Reduced sample size for memory efficiency
+SAMPLE_SIZE = 3000
 df_sample = (
-    df_hac.sample(n=10000, random_state=42)
-    if len(df_hac) > 10000
+    df_hac.sample(n=SAMPLE_SIZE, random_state=42)
+    if len(df_hac) > SAMPLE_SIZE
     else df_hac.copy()
 )
 
@@ -507,7 +508,7 @@ hac_sil_fig = px.line(
     title="Silhouette Scores for Different K (Gower Distance)",
 )
 
-# final model at best_k (should be 2)
+# final model at best_k
 final_model = AgglomerativeClustering(
     n_clusters=best_k, metric="precomputed", linkage="average"
 )
@@ -516,10 +517,61 @@ final_labels = final_model.fit_predict(distance_matrix)
 df_sample = df_sample.reset_index(drop=True)
 df_sample["cluster"] = final_labels
 
-# map ADDEPEV3 back to Yes/No for plots
+# ============================================================
+# AUTO-DETECT: Which cluster is High ACE vs Low ACE
+# ============================================================
+
+# Calculate ACE score: count "Yes" in YN columns + count of experiences in NOM columns
+def calculate_ace_score(row):
+    score = 0
+    # Count Yes/1 in binary ACE columns
+    for col in ace_YN:
+        if col in df_sample.columns:
+            if row[col] in ["Yes", 1, 1.0]:
+                score += 1
+    
+    # Count any non-"Never" response in nominal ACE columns
+    for col in ace_NOM:
+        if col in df_sample.columns:
+            if row[col] != "Never" and pd.notna(row[col]):
+                score += 1
+    
+    return score
+
+df_sample["ace_score"] = df_sample.apply(calculate_ace_score, axis=1)
+
+# Calculate mean ACE score per cluster
+cluster_ace_means = df_sample.groupby("cluster")["ace_score"].mean()
+
+# Identify which cluster has higher ACE exposure
+high_ace_cluster = cluster_ace_means.idxmax()
+low_ace_cluster = cluster_ace_means.idxmin()
+
+print(f"Cluster {high_ace_cluster}: High ACE (mean score: {cluster_ace_means[high_ace_cluster]:.2f})")
+print(f"Cluster {low_ace_cluster}: Low ACE (mean score: {cluster_ace_means[low_ace_cluster]:.2f})")
+
+# Create mapping dictionary
+cluster_labels = {
+    high_ace_cluster: "High ACE / High risk",
+    low_ace_cluster: "Low ACE / Low risk"
+}
+
+# Create readable cluster column
+df_sample["cluster_label"] = df_sample["cluster"].map(cluster_labels)
+
+# Map ADDEPEV3 back to Yes/No for plots
 df_sample["ADDEPEV3"] = df_sample["ADDEPEV3"].replace(
     {0.0: "No", 1.0: "Yes", 0: "No", 1: "Yes"}
 )
+
+# Define colors based on actual cluster assignment
+color_high_ace = "#ff69b4"  # Pink for high ACE
+color_low_ace = "#6b8cce"   # Blue for low ACE
+
+cluster_colors = {
+    high_ace_cluster: color_high_ace,
+    low_ace_cluster: color_low_ace
+}
 
 # ----- ACE HEATMAP -----
 heatmap_matrix = []
@@ -531,9 +583,11 @@ for col in cat_cols:
             pd.crosstab(df_sample["cluster"], df_sample[col], normalize="index") * 100
         )
         for category in crosstab.columns:
-            heatmap_matrix.append(
-                [crosstab.loc[0, category], crosstab.loc[1, category]]
-            )
+            # Order: High ACE first, Low ACE second
+            heatmap_matrix.append([
+                crosstab.loc[high_ace_cluster, category],
+                crosstab.loc[low_ace_cluster, category]
+            ])
             heatmap_labels.append(f"{col}: {category}")
 
 heatmap_matrix = np.array(heatmap_matrix)
@@ -572,9 +626,6 @@ hac_heatmap_fig.update_layout(
 )
 
 # ----- ACE DROPDOWN BAR CHART -----
-color_c0 = "#6b8cce"
-color_c1 = "#ff69b4"
-
 hac_cat_fig = go.Figure()
 buttons = []
 
@@ -586,21 +637,23 @@ for i, col in enumerate(cat_cols):
 
     is_visible = i == 0
 
+    # High ACE cluster
     hac_cat_fig.add_trace(
         go.Bar(
             x=categories,
-            y=crosstab.loc[0],
+            y=crosstab.loc[high_ace_cluster],
             name="High ACE / High risk",
-            marker_color=color_c0,
+            marker_color=color_high_ace,
             visible=is_visible,
         )
     )
+    # Low ACE cluster
     hac_cat_fig.add_trace(
         go.Bar(
             x=categories,
-            y=crosstab.loc[1],
+            y=crosstab.loc[low_ace_cluster],
             name="Low ACE / Low risk",
-            marker_color=color_c1,
+            marker_color=color_low_ace,
             visible=is_visible,
         )
     )
@@ -652,9 +705,6 @@ fig_mh_bar = make_subplots(
     rows=3, cols=1, subplot_titles=mh_titles, vertical_spacing=0.1
 )
 
-c0_color = "#6b8cce"
-c1_color = "#ff69b4"
-
 for i, col in enumerate(cat_mh_cols):
     ct = (
         pd.crosstab(df_sample["cluster"], df_sample[col], normalize="index") * 100
@@ -664,9 +714,9 @@ for i, col in enumerate(cat_mh_cols):
     fig_mh_bar.add_trace(
         go.Bar(
             x=labels,
-            y=ct.loc[0],
+            y=ct.loc[high_ace_cluster],
             name="High ACE / High risk",
-            marker_color=c0_color,
+            marker_color=color_high_ace,
             showlegend=(i == 0),
         ),
         row=i + 1,
@@ -676,9 +726,9 @@ for i, col in enumerate(cat_mh_cols):
     fig_mh_bar.add_trace(
         go.Bar(
             x=labels,
-            y=ct.loc[1],
+            y=ct.loc[low_ace_cluster],
             name="Low ACE / Low risk",
-            marker_color=c1_color,
+            marker_color=color_low_ace,
             showlegend=(i == 0),
         ),
         row=i + 1,
@@ -704,16 +754,17 @@ x_labels = ["Mental health not good (days)", "Poor health limits activities (day
 for i, col in enumerate(metrics):
     show_legend = i == 0
 
+    # High ACE cluster
     fig_violin.add_trace(
         go.Violin(
-            y=df_sample[df_sample["cluster"] == 0][col],
-            x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == 0]),
+            y=df_sample[df_sample["cluster"] == high_ace_cluster][col],
+            x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == high_ace_cluster]),
             legendgroup="High ACE / High risk",
-            scalegroup="Cluster0",
+            scalegroup="HighACE",
             name="High ACE / High risk",
             side="negative",
-            line_color=c0_color,
-            fillcolor=c0_color,
+            line_color=color_high_ace,
+            fillcolor=color_high_ace,
             opacity=0.6,
             meanline_visible=True,
             showlegend=show_legend,
@@ -721,16 +772,17 @@ for i, col in enumerate(metrics):
         )
     )
 
+    # Low ACE cluster
     fig_violin.add_trace(
         go.Violin(
-            y=df_sample[df_sample["cluster"] == 1][col],
-            x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == 1]),
+            y=df_sample[df_sample["cluster"] == low_ace_cluster][col],
+            x=[x_labels[i]] * len(df_sample[df_sample["cluster"] == low_ace_cluster]),
             legendgroup="Low ACE / Low risk",
-            scalegroup="Cluster1",
+            scalegroup="LowACE",
             name="Low ACE / Low risk",
             side="positive",
-            line_color=c1_color,
-            fillcolor=c1_color,
+            line_color=color_low_ace,
+            fillcolor=color_low_ace,
             opacity=0.6,
             meanline_visible=True,
             showlegend=show_legend,
